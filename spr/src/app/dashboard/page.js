@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import PocketBase from 'pocketbase';
 
 export default function Dashboard() {
-  const serverUrl = 'http://192.168.2.9:8080';
+  const serverUrl = 'http://192.168.0.148:8090';
   const pb = new PocketBase(serverUrl);
   const router = useRouter();
   
@@ -821,7 +821,7 @@ export default function Dashboard() {
                 onClick={handleLogout}
                 className="bg-red-500 text-white px-4 py-2 rounded"
               >
-                Logout
+                Wyloguj się
               </button>
             </div>
           </div>

@@ -14,7 +14,7 @@ export async function POST(request) {
 
   try {
     // Inicjalizacja PocketBase - użyj zmiennej środowiskowej
-    const pb = new PocketBase(process.env.NEXT_PUBLIC_POCKETBASE_URL || 'http://192.168.2.9:8080');
+    const pb = new PocketBase(process.env.NEXT_PUBLIC_POCKETBASE_URL || 'http://192.168.0.148:8090');
 
     // Autentykacja użytkownika
     const authData = await pb.collection('users').authWithPassword(

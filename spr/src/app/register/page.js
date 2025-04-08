@@ -64,7 +64,7 @@ export default function RegisterPage() {
     setIsLoading(true);
 
     try {
-      const pb = new PocketBase('http://192.168.2.9:8080');
+      const pb = new PocketBase('http://192.168.0.148:8090');
 
       // Register in "users" collection
       await pb.collection('users').create({
