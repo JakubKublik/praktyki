@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import PocketBase from 'pocketbase'
-import { FiUser, FiSettings, FiShield, FiAlertTriangle, FiLogOut, FiHome, FiEdit, FiSave, FiX, FiBook, FiArrowLeft, FiTrash2, FiHeart, FiShoppingBag } from 'react-icons/fi'
+import { FiUser, FiSettings, FiShield, FiAlertTriangle, FiLogOut, FiHome, FiEdit, FiSave, FiX, FiBook, FiArrowLeft, FiTrash2, FiHeart, FiShoppingBag, FiCheck } from 'react-icons/fi'
 import Link from 'next/link'
 const POCKETBASE_URL = 'http://192.168.0.148:8090'
 
@@ -50,6 +50,11 @@ export default function ProfilePage() {
   const [showFavoritesView, setShowFavoritesView] = useState(false)
   const [purchases, setPurchases] = useState([])
   const [showPurchasesView, setShowPurchasesView] = useState(false)
+  const [usersList, setUsersList] = useState([])
+  const [showUsersManagement, setShowUsersManagement] = useState(false)
+  const [userEditMode, setUserEditMode] = useState(null)
+  const [reportedComments, setReportedComments] = useState([])
+  const [showReportedComments, setShowReportedComments] = useState(false)
 
   useEffect(() => {
     setIsClient(true)
@@ -61,6 +66,8 @@ export default function ProfilePage() {
     setShowReviewsView(false)
     setShowFavoritesView(false)
     setShowPurchasesView(false)
+    setShowUsersManagement(false)
+    setShowReportedComments(false)
     setEditingReviewId(null)
   }
 
@@ -113,6 +120,8 @@ export default function ProfilePage() {
       setShowReviewsView(true)
       setShowFavoritesView(false)
       setShowPurchasesView(false)
+      setShowUsersManagement(false)
+      setShowReportedComments(false)
       setLoading(false)
     } catch (err) {
       console.error('Błąd pobierania recenzji:', err)
@@ -133,6 +142,8 @@ export default function ProfilePage() {
       setShowFavoritesView(true)
       setShowReviewsView(false)
       setShowPurchasesView(false)
+      setShowUsersManagement(false)
+      setShowReportedComments(false)
       setLoading(false)
     } catch (err) {
       console.error('Błąd pobierania ulubionych:', err)
@@ -144,22 +155,19 @@ export default function ProfilePage() {
   const fetchPurchases = async () => {
     try {
       setLoading(true);
-      // Pobierz wszystkie zakupy
       const purchases = await pb.collection('kupione').getFullList({
         filter: `user = "${userData.email}"`,
         sort: '-created'
       });
   
-      // Pobierz tylko okładki dla powiązanych książek
       const bookIds = purchases.map(p => p.id_book).filter(Boolean);
       const bookCovers = bookIds.length > 0 
         ? await pb.collection('ksiazki').getFullList({
             filter: bookIds.map(id => `id = "${id}"`).join('||'),
-            fields: 'id,okladka' // Pobierz tylko ID i okładkę
+            fields: 'id,okladka'
           })
         : [];
   
-      // Połącz dane
       const purchasesWithCovers = purchases.map(purchase => ({
         ...purchase,
         bookCover: bookCovers.find(b => b.id === purchase.id_book)?.okladka || null
@@ -167,6 +175,10 @@ export default function ProfilePage() {
   
       setPurchases(purchasesWithCovers);
       setShowPurchasesView(true);
+      setShowReviewsView(false);
+      setShowFavoritesView(false);
+      setShowUsersManagement(false);
+      setShowReportedComments(false);
       setLoading(false);
     } catch (err) {
       console.error('Błąd pobierania zakupów:', err);
@@ -174,6 +186,86 @@ export default function ProfilePage() {
       setLoading(false);
     }
   };
+
+  const fetchAllUsers = async () => {
+    try {
+      setLoading(true);
+      const result = await pb.collection('users').getFullList({
+        sort: '-created',
+        $autoCancel: false
+      });
+      setUsersList(result);
+      setShowUsersManagement(true);
+      setShowReviewsView(false);
+      setShowFavoritesView(false);
+      setShowPurchasesView(false);
+      setShowReportedComments(false);
+      setLoading(false);
+    } catch (err) {
+      console.error('Błąd pobierania użytkowników:', err);
+      setError('Nie udało się załadować listy użytkowników');
+      setLoading(false);
+    }
+  };
+
+  const fetchReportedComments = async () => {
+    try {
+      setLoading(true);
+      const result = await pb.collection('recenzje').getFullList({
+        filter: 'report = true',
+        expand: 'id_user,id_book',
+        $autoCancel: false
+      });
+      setReportedComments(result);
+      setShowReportedComments(true);
+      setShowUsersManagement(false);
+      setShowReviewsView(false);
+      setShowFavoritesView(false);
+      setShowPurchasesView(false);
+      setLoading(false);
+    } catch (err) {
+      console.error('Błąd pobierania zgłoszonych komentarzy:', err);
+      setError('Nie udało się załadować zgłoszonych komentarzy');
+      setLoading(false);
+    }
+  };
+
+  const handleChangeUserRole = async (userId, newRole) => {
+    if (confirm(`Czy na pewno chcesz zmienić rolę tego użytkownika na ${newRole}?`)) {
+      try {
+        await pb.collection('users').update(userId, { rola: newRole });
+        setUsersList(prev => prev.map(user => 
+          user.id === userId ? { ...user, rola: newRole } : user
+        ));
+      } catch (err) {
+        console.error('Błąd zmiany roli:', err);
+        setError('Nie udało się zmienić roli użytkownika');
+      }
+    }
+  };
+
+  const handleApproveComment = async (commentId) => {
+    try {
+      await pb.collection('recenzje').update(commentId, { report: false });
+      setReportedComments(prev => prev.filter(comment => comment.id !== commentId));
+    } catch (err) {
+      console.error('Błąd zatwierdzania komentarza:', err);
+      setError('Nie udało się zatwierdzić komentarza');
+    }
+  };
+
+  const handleDeleteComment = async (commentId) => {
+    if (confirm('Czy na pewno chcesz usunąć ten komentarz?')) {
+      try {
+        await pb.collection('recenzje').delete(commentId);
+        setReportedComments(prev => prev.filter(comment => comment.id !== commentId));
+      } catch (err) {
+        console.error('Błąd usuwania komentarza:', err);
+        setError('Nie udało się usunąć komentarza');
+      }
+    }
+  };
+
   const formatDate = (dateString) => {
     if (!dateString) return 'Brak daty'
     const date = new Date(dateString)
@@ -361,20 +453,24 @@ export default function ProfilePage() {
             <h2 className="text-xl font-bold text-purple-800 flex items-center">
               <FiShield className="mr-2" /> Panel Super Administratora
             </h2>
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-white p-4 rounded-lg shadow">
-                <h3 className="font-semibold text-purple-700">Zarządzanie serwerem</h3>
-                <p className="text-sm text-gray-600 mt-2">Pełny dostęp do wszystkich funkcji systemu</p>
-              </div>
-              <div className="bg-white p-4 rounded-lg shadow">
-                <h3 className="font-semibold text-purple-700">Administratorzy</h3>
-                <p className="text-sm text-gray-600 mt-2">Zarządzaj kontami administratorów</p>
-              </div>
-              <div className="bg-white p-4 rounded-lg shadow">
-                <h3 className="font-semibold text-purple-700">Logi systemowe</h3>
-                <p className="text-sm text-gray-600 mt-2">Przeglądaj pełne logi aplikacji</p>
-              </div>
-            </div>
+            {userData?.rola === 'sadmin' && (
+              
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button 
+                    onClick={fetchAllUsers}
+                    className="flex items-center px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition"
+                  >
+                    <FiUser className="mr-2" /> Zarządzaj użytkownikami
+                  </button>
+                  <button 
+                    onClick={fetchReportedComments}
+                    className="flex items-center px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition"
+                  >
+                    <FiAlertTriangle className="mr-2" /> Zgłoszone komentarze
+                  </button>
+                </div>
+              
+            )}
           </div>
         )
       case 'admin':
@@ -383,16 +479,19 @@ export default function ProfilePage() {
             <h2 className="text-xl font-bold text-blue-800 flex items-center">
               <FiSettings className="mr-2" /> Panel Administratora
             </h2>
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-white p-4 rounded-lg shadow">
-                <h3 className="font-semibold text-blue-700">Zarządzanie użytkownikami</h3>
-                <p className="text-sm text-gray-600 mt-2">Edytuj i usuwaj konta użytkowników</p>
-              </div>
-              <div className="bg-white p-4 rounded-lg shadow">
-                <h3 className="font-semibold text-blue-700">Statystyki</h3>
-                <p className="text-sm text-gray-600 mt-2">Przeglądaj statystyki systemu</p>
-              </div>
-            </div>
+            {userData?.rola === 'admin' && (
+              
+                
+                <div className="mt-4">
+                  <button 
+                    onClick={fetchReportedComments}
+                    className="flex items-center px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+                  >
+                    <FiAlertTriangle className="mr-2" /> Przeglądaj zgłoszone komentarze
+                  </button>
+                </div>
+              
+            )}
           </div>
         )
       default:
@@ -661,6 +760,174 @@ export default function ProfilePage() {
     )
   }
 
+  if (showUsersManagement && userData?.rola === 'sadmin') {
+    return (
+      <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <div className="bg-white shadow rounded-lg overflow-hidden">
+            <div className="bg-indigo-600 px-6 py-4 text-white flex justify-between items-center">
+              <button
+                onClick={handleBackToProfile}
+                className="flex items-center text-indigo-100 hover:text-white"
+              >
+                <FiArrowLeft className="mr-2" /> Wróć do profilu
+              </button>
+              <h2 className="text-xl font-bold">Zarządzanie użytkownikami</h2>
+              <div className="w-8"></div>
+            </div>
+
+            <div className="px-6 py-8">
+              {loading ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500 mx-auto"></div>
+                </div>
+              ) : usersList.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-gray-500">Brak użytkowników w systeme.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Imię</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nazwisko</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rola</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data rejestracji</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Akcje</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {usersList.map(user => (
+                        <tr key={user.id}>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{user.email}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.imie || '-'}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.nazwisko || '-'}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {userEditMode === user.id ? (
+                              <select
+                                value={user.rola}
+                                onChange={(e) => handleChangeUserRole(user.id, e.target.value)}
+                                className="border rounded p-1"
+                              >
+                                <option value="user">User</option>
+                                <option value="admin">Admin</option>
+                                <option value="sadmin">Super Admin</option>
+                              </select>
+                            ) : (
+                              <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                                ${user.rola === 'sadmin' ? 'bg-purple-100 text-purple-800' : 
+                                  user.rola === 'admin' ? 'bg-blue-100 text-blue-800' : 
+                                  'bg-green-100 text-green-800'}`}>
+                                {user.rola || 'user'}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDate(user.created)}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <button
+                              onClick={() => setUserEditMode(userEditMode === user.id ? null : user.id)}
+                              className="text-indigo-600 hover:text-indigo-900 mr-3"
+                            >
+                              {userEditMode === user.id ? 'Anuluj' : 'Zmień rolę'}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (showReportedComments && (userData?.rola === 'admin' || userData?.rola === 'sadmin')) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <div className="bg-white shadow rounded-lg overflow-hidden">
+            <div className="bg-indigo-600 px-6 py-4 text-white flex justify-between items-center">
+              <button
+                onClick={handleBackToProfile}
+                className="flex items-center text-indigo-100 hover:text-white"
+              >
+                <FiArrowLeft className="mr-2" /> Wróć do profilu
+              </button>
+              <h2 className="text-xl font-bold">Zgłoszone komentarze</h2>
+              <div className="w-8"></div>
+            </div>
+
+            <div className="px-6 py-8">
+              {loading ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500 mx-auto"></div>
+                </div>
+              ) : reportedComments.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-gray-500">Brak zgłoszonych komentarzy</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {reportedComments.map(comment => (
+                    <div key={comment.id} className="border-b border-gray-200 pb-6 last:border-b-0">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h3 className="text-lg font-medium">
+                            {comment.expand?.id_user?.email || 'Anonimowy użytkownik'}
+                          </h3>
+                          <p className="text-sm text-gray-500 mt-1">
+                            Książka: {comment.expand?.id_book?.tytul || 'Nieznana książka'}
+                          </p>
+                          <div className="flex items-center mt-1">
+                            {[...Array(5)].map((_, i) => (
+                              <svg
+                                key={i}
+                                className={`w-5 h-5 ${i < comment.ocena ? 'text-yellow-400' : 'text-gray-300'}`}
+                                fill="currentColor"
+                                viewBox="0 0 20 20"
+                              >
+                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                              </svg>
+                            ))}
+                          </div>
+                          <div className="mt-4 bg-red-50 p-4 rounded-lg border-l-4 border-red-500">
+                            <p className="text-gray-700">{comment.tresc}</p>
+                            <div className="mt-2 text-sm text-red-600 flex items-center">
+                              <FiAlertTriangle className="mr-1" /> Komentarz zgłoszony przez użytkowników
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          <button
+                            onClick={() => handleApproveComment(comment.id)}
+                            className="flex items-center px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200"
+                          >
+                            <FiCheck className="mr-1" /> Zatwierdź
+                          </button>
+                          <button
+                            onClick={() => handleDeleteComment(comment.id)}
+                            className="flex items-center px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200"
+                          >
+                            <FiTrash2 className="mr-1" /> Usuń
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto">
@@ -720,6 +987,28 @@ export default function ProfilePage() {
                 </button>
               </div>
             </div>
+
+            <div className="mt-6 flex flex-wrap gap-2">
+              <button 
+                onClick={fetchUserReviews}
+                className="flex items-center px-4 py-2 bg-blue-500 bg-opacity-20 hover:bg-opacity-30 rounded-lg transition text-white"
+              >
+                <FiBook className="mr-2" /> Twoje recenzje
+              </button>
+              <button 
+                onClick={fetchFavorites}
+                className="flex items-center px-4 py-2 bg-pink-500 bg-opacity-20 hover:bg-opacity-30 rounded-lg transition text-white"
+              >
+                <FiHeart className="mr-2" /> Polubione
+              </button>
+              <button 
+                onClick={fetchPurchases}
+                className="flex items-center px-4 py-2 bg-green-500 bg-opacity-20 hover:bg-opacity-30 rounded-lg transition text-white"
+              >
+                <FiShoppingBag className="mr-2" /> Zakupy
+              </button>
+             
+            </div>
           </div>
 
           <div className="px-6 py-8">
@@ -736,24 +1025,14 @@ export default function ProfilePage() {
                     >
                       <FiEdit className="mr-1" /> Edytuj
                     </button>
-                    <button 
-                      onClick={fetchUserReviews}
-                      className="flex items-center px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition"
-                    >
-                      <FiBook className="mr-1" /> Twoje recenzje
-                    </button>
-                    <button 
-                      onClick={fetchFavorites}
-                      className="flex items-center px-3 py-1 bg-pink-100 text-pink-700 rounded hover:bg-pink-200 transition"
-                    >
-                      <FiHeart className="mr-1" /> Polubione
-                    </button>
-                    <button 
-                      onClick={fetchPurchases}
-                      className="flex items-center px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 transition"
-                    >
-                      <FiShoppingBag className="mr-1" /> Zakupy
-                    </button>
+                    {userData?.rola === 'sadmin' && (
+                      <button 
+                        onClick={fetchAllUsers}
+                        className="flex items-center px-3 py-1 bg-purple-100 text-purple-700 rounded hover:bg-purple-200 transition"
+                      >
+                        <FiUser className="mr-1" /> Zarządzaj użytkownikami
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <div className="flex gap-2">
@@ -837,33 +1116,9 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {userData?.rola === 'super_admin' && (
-              <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4 mb-6">
-                <h2 className="text-lg font-semibold text-yellow-800">Funkcje specjalne</h2>
-                <div className="mt-2 space-y-2">
-                  <button className="px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600 transition">
-                    Zarządzanie całym systemem
-                  </button>
-                  <button className="ml-2 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition">
-                    Awaryjne akcje
-                  </button>
-                </div>
-              </div>
-            )}
+            
 
-            {userData?.rola === 'admin' && (
-              <div className="bg-blue-50 border-l-4 border-blue-500 p-4">
-                <h2 className="text-lg font-semibold text-blue-800">Narzędzia administracyjne</h2>
-                <div className="mt-2 space-y-2">
-                  <button className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition">
-                    Zarządzaj użytkownikami
-                  </button>
-                  <button className="ml-2 px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition">
-                    Przeglądaj raporty
-                  </button>
-                </div>
-              </div>
-            )}
+            
           </div>
         </div>
       </div>
