@@ -55,6 +55,7 @@ export default function ProfilePage() {
   const [userEditMode, setUserEditMode] = useState(null)
   const [reportedComments, setReportedComments] = useState([])
   const [showReportedComments, setShowReportedComments] = useState(false)
+  const [genres, setGenres] = useState([])
 
   useEffect(() => {
     setIsClient(true)
@@ -73,28 +74,32 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (!pb || !isClient) return
-
-    const checkAuthAndFetchData = async () => {
+  
+    const fetchInitialData = async () => {
       try {
-        if (!pb.authStore.model || !pb.authStore.model.id) {
-          return
-        }
-
-        const record = await pb.collection('users').getOne(
+        // Pobierz dane użytkownika
+        const userRecord = await pb.collection('users').getOne(
           pb.authStore.model.id,
           { $autoCancel: false }
         )
-
-        setUserData(record)
-        setEditData({
-          imie: record.imie || '',
-          nazwisko: record.nazwisko || '',
-          username: record.username || '',
-          gatunek: record.gatunek || ''
+  
+        // Pobierz listę gatunków z bazy
+        const genresList = await pb.collection('gatunki').getFullList({
+          sort: 'nazwa',
+          $autoCancel: false
         })
+  
+        setUserData(userRecord)
+        setEditData({
+          imie: userRecord.imie || '',
+          nazwisko: userRecord.nazwisko || '',
+          username: userRecord.username || '',
+          gatunek: userRecord.gatunek || ''
+        })
+        setGenres(genresList)
         
-        if (record.avatar) {
-          const url = pb.files.getUrl(record, record.avatar)
+        if (userRecord.avatar) {
+          const url = pb.files.getUrl(userRecord, userRecord.avatar)
           setAvatarUrl(url)
         }
         setLoading(false)
@@ -104,8 +109,8 @@ export default function ProfilePage() {
         setLoading(false)
       }
     }
-
-    checkAuthAndFetchData()
+  
+    fetchInitialData()
   }, [pb, isClient])
 
   const fetchUserReviews = async () => {
@@ -1096,23 +1101,23 @@ export default function ProfilePage() {
                   )}
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Ulubione gatunki</p>
-                  {isEditing ? (
-                    <select
-                      name="gatunek"
-                      value={editData.gatunek}
-                      onChange={handleChange}
-                      className="w-full p-2 border rounded"
-                    >
-                      <option value="">Wybierz gatunek</option>
-                      {bookGenres.map(genre => (
-                        <option key={genre} value={genre}>{genre}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <p className="font-medium">{userData?.gatunek || 'Nie wybrano'}</p>
-                  )}
-                </div>
+  <p className="text-sm text-gray-500">Ulubione gatunki</p>
+  {isEditing ? (
+    <select
+      name="gatunek"
+      value={editData.gatunek}
+      onChange={handleChange}
+      className="w-full p-2 border rounded"
+    >
+      <option value="">Wybierz gatunek</option>
+      {genres.map(genre => (
+        <option key={genre.id} value={genre.nazwa}>{genre.nazwa}</option>
+      ))}
+    </select>
+  ) : (
+    <p className="font-medium">{userData?.gatunek || 'Nie wybrano'}</p>
+  )}
+</div>
               </div>
             </div>
 
